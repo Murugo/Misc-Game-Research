@@ -532,7 +532,7 @@ class MsetParser:
         if 'POSITION' not in self.armature.pose.bones[
             effector_bone_name].constraints:
           print(
-              f'WARNING: Expected "Copy Location" constraint on bone {effector_bone_name} for IK chain starting at {root_bone_name}'
+              f'WARNING: Expected "POSITION" constraint on bone {effector_bone_name} for IK chain starting at {root_bone_name}'
           )
           bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
           continue
@@ -712,7 +712,7 @@ class MsetParser:
       # in pose space, sort of like an additive layer on top of the bone's edit
       # transform.
       # 
-      # We need to changethe basis of the transform to pose space at each time
+      # We need to change the basis of the transform to pose space at each time
       # step. This method is *very* slow since it creates a lot of excessive
       # keyframes, but right now I do not have a good way to apply the fcurves
       # in the ANB directly.
