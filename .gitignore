@@ -1,2 +1,7 @@
 .vscode/
 **/__pycache__/
+**/*.pyd
+**/*PYTHON_wrap.cxx
+**/backup/
+**/test/
+build/
