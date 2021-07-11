@@ -99,7 +99,8 @@ class Fcurve:
       self.keyframes.append(Keyframe(time, value, kf_type, slope_in, slope_out))
       return
     last_keyframe = self.keyframes[-1]
-    if abs(last_keyframe.time - time) < 1e-5:
+    if abs(last_keyframe.time - time) < 1e-5 or (time < last_keyframe.time and
+                                                 len(self.keyframes) == 1):
       last_keyframe.value = value
       last_keyframe.type = kf_type
       last_keyframe.slope_in = slope_in
@@ -151,7 +152,7 @@ class Fcurve:
     return keyframe.interpolate(self.keyframes[minpos + 1], time)
 
   def get_max_time(self):
-    return self.keyframes[-1].time
+    return self.keyframes[-1].time if self.keyframes else 0.0
 
 
 # Timeline class which holds ANB fcurves for a single bone.
