@@ -190,7 +190,11 @@ class BoneTimeline:
   def get_max_time(self):
     return max([fcurve.get_max_time() for fcurve in self.fcurves])
 
-  def get_decomposed_transform_at_time(self, time, prev_euler=None):
+  def get_decomposed_transform_at_time(self,
+                                       time,
+                                       prev_euler=None,
+                                       prev_scale=None,
+                                       axis_flip=False):
     kf_scale = [
         self.fcurves[CHANNEL_SCX].get_value_at_time(time),
         self.fcurves[CHANNEL_SCY].get_value_at_time(time),
@@ -226,7 +230,19 @@ class BoneTimeline:
       rot_euler = mat.to_euler('XYZ', prev_euler)
     else:
       rot_euler = mat.to_euler('XYZ')
-    return scale, rot_euler, pos
+
+    if (prev_scale and (scale[0] > 0) != (prev_scale[0] > 0) and
+        (scale[1] > 0) != (prev_scale[1] > 0) and (scale[2] > 0) !=
+        (prev_scale[2] > 0)):
+      # Avoid axis flips caused by negated scale.
+      axis_flip = not axis_flip
+
+    if axis_flip:
+      rot_euler = mathutils.Euler(
+          [rot_euler[0], rot_euler[1] + math.pi, rot_euler[2]])
+      rot_euler.make_compatible(prev_euler)
+
+    return scale, rot_euler, pos, axis_flip
 
 
 class MotionPrototype0RawHeader:
@@ -711,7 +727,7 @@ class MsetParser:
       # KH2 fcurves animate the bone transform directly. Blender animates bones
       # in pose space, sort of like an additive layer on top of the bone's edit
       # transform.
-      # 
+      #
       # We need to change the basis of the transform to pose space at each time
       # step. This method is *very* slow since it creates a lot of excessive
       # keyframes, but right now I do not have a good way to apply the fcurves
@@ -721,9 +737,11 @@ class MsetParser:
       # each bone to the identity matrix and using Blender's NLA feature apply
       # another action on top of it which contains the original fcurves.
       prev_euler = None
+      prev_scale = None
+      axis_flip = False
       for t in range(math.ceil(bone_timeline.get_max_time()) + 1):
-        scale, rot_euler, pos = bone_timeline.get_decomposed_transform_at_time(
-            t, prev_euler)
+        scale, rot_euler, pos, axis_flip = bone_timeline.get_decomposed_transform_at_time(
+            t, prev_euler, prev_scale, axis_flip)
         if not ignore_scale:
           add_keyframe(CHANNEL_SCX, t, scale[0])
           add_keyframe(CHANNEL_SCY, t, scale[1])
@@ -735,6 +753,7 @@ class MsetParser:
         add_keyframe(CHANNEL_ETY, t, pos[1])
         add_keyframe(CHANNEL_ETZ, t, pos[2])
         prev_euler = rot_euler
+        prev_scale = scale
 
       for channel in range(9):
         fcurves[channel].update()
