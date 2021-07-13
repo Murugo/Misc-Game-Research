@@ -281,6 +281,9 @@ class MsetParser:
     self.value_table = []
     self.slope_table = []
 
+    # {Target bone name -> CopyRotationConstraint}
+    self.rotation_constraint_dict = dict()
+
   def parse(self, filepath):
     self.basename = os.path.splitext(os.path.basename(filepath))[0]
     f = readutil.BinaryFileReader(filepath)
@@ -459,6 +462,7 @@ class MsetParser:
         constraint.name = 'ROTATION'
         constraint.target = self.armature
         constraint.subtarget = active_bone_name
+        self.rotation_constraint_dict[active_bone_name] = constraint
 
       elif link_type == 0x3:  # DIR
         # TODO: Not game-accurate, but TRACK_X may be correct in the least.
@@ -561,14 +565,21 @@ class MsetParser:
 
         mid_edit_bone = self.armature.data.edit_bones[mid_bone_name]
         effector_edit_bone = self.armature.data.edit_bones[effector_bone_name]
+        # Workaround to fix Goofy's IK rig. Create a dummy bone which preserves
+        # the transform of the mid bone. Find the constraint which copies the
+        # rotation of the mid bone, and update it to copy the dummy instead.
+        if mid_bone_name in self.rotation_constraint_dict:
+          dummy_bone_name = f'{mid_bone_name}_Preserve'
+          dummy_bone = self.armature.data.edit_bones.new(dummy_bone_name)
+          dummy_bone.head = mid_edit_bone.head
+          dummy_bone.tail = mid_edit_bone.tail
+          dummy_bone.matrix = mid_edit_bone.matrix.copy()
+          dummy_bone.use_inherit_rotation = True
+          dummy_bone.use_local_location = True
+          dummy_bone.parent = mid_edit_bone
         # Connect the mid bone to its effector to get the Blender IK constraint
         # to work. Fudging the matrix of the mid bone is okay because Blender's
         # IK solver will calculate it.
-        #
-        # TODO: This breaks Goofy's IK rig due to a rotation constraint applied
-        # on the model's elbow joint to copy the elbow IK helper. One solution
-        # in this case (not great) is to also modify the model elbow joint to
-        # match the new transform of the IK helper.
         mid_edit_bone.tail = effector_edit_bone.head
 
         # Create a new bone for the pole target.
@@ -588,6 +599,11 @@ class MsetParser:
         pole_target_bone.parent = root_parent_edit_bone
 
         bpy.ops.object.mode_set(mode='POSE', toggle=False)
+
+        if mid_bone_name in self.rotation_constraint_dict:
+          dummy_bone_name = f'{mid_bone_name}_Preserve'
+          self.rotation_constraint_dict[
+              mid_bone_name].subtarget = dummy_bone_name
 
         mid_pose_bone = self.armature.pose.bones[mid_bone_name]
         effector_pose_bone = self.armature.pose.bones[effector_bone_name]
@@ -756,7 +772,7 @@ class MsetParser:
         prev_euler = rot_euler
         prev_scale = scale
 
-      for channel in range(9):
+      for channel in range(3 if ignore_scale else 0, 9):
         fcurves[channel].update()
 
     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
