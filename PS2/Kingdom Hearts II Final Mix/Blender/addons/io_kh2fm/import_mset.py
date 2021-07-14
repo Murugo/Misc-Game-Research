@@ -563,8 +563,22 @@ class MsetParser:
 
         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
 
+        root_edit_bone = self.armature.data.edit_bones[root_bone_name]
         mid_edit_bone = self.armature.data.edit_bones[mid_bone_name]
         effector_edit_bone = self.armature.data.edit_bones[effector_bone_name]
+
+        # Set a preferred angle if one does not exist by moving the effector
+        # bone slightly. If the IK chain forms a straight line, the solver may
+        # cause jitter during playback and/or not bend the chain at all.
+        # This occurs in only a handful of models, e.g. Donald and Ariel.
+        if abs(root_edit_bone.head[2] - mid_edit_bone.head[2]) < 1e-3 and abs(
+            root_edit_bone.head[2] - effector_edit_bone.head[2]) < 1e-3:
+          print(
+              f'Adjusting the position of {effector_bone_name} to set a preferred IK angle.'
+          )
+          effector_edit_bone.head[2] += -0.1 if is_leg_ik else 0.1
+          effector_edit_bone.tail[2] += -0.1 if is_leg_ik else 0.1
+
         # Workaround to fix Goofy's IK rig. Create a dummy bone which preserves
         # the transform of the mid bone. Find the constraint which copies the
         # rotation of the mid bone, and update it to copy the dummy instead.
@@ -749,7 +763,7 @@ class MsetParser:
       # step. This method is *very* slow since it creates a lot of excessive
       # keyframes, but right now I do not have a good way to apply the fcurves
       # in the ANB directly.
-
+      #
       # TODO: Consider creating an action which "resets" the local transform of
       # each bone to the identity matrix and using Blender's NLA feature apply
       # another action on top of it which contains the original fcurves.
