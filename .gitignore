@@ -1,6 +1,7 @@
 .vscode/
 **/__pycache__/
 **/*.pyd
+**/*.dll
 **/*PYTHON_wrap.cxx
 **/backup/
 **/test/
