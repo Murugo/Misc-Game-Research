@@ -350,8 +350,7 @@ class MdlxParser:
       mat_position[2][3] = position[2]
       local_matrix = mat_position @ mat_rotation @ mat_scale
       if parent_index >= 0:
-        global_matrix = armature_data.edit_bones[
-            parent_index].matrix @ local_matrix
+        global_matrix = self.bone_matrices[parent_index] @ local_matrix
       else:
         global_matrix = local_matrix
 
@@ -366,6 +365,7 @@ class MdlxParser:
       # Store a custom property that preserves the original Euler angles.
       # The MSET importer will apply keyframes on top of these angles.
       bone['local_euler'] = local_euler
+      bone['global_matrix'] = global_matrix
 
       self.bone_matrices[index] = global_matrix
 

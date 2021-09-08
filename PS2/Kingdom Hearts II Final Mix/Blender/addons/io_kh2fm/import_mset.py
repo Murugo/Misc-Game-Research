@@ -38,6 +38,29 @@ class MsetImportError(Exception):
 
 class BoneTransform:
   def __init__(self, bone):
+    # Properties are set by the MDLX importer.
+    rot_euler_property = bone.get('local_euler')
+    global_matrix_property = bone.get('global_matrix')
+    parent_global_matrix_property = None
+    if bone.parent:
+      parent_global_matrix_property = bone.parent.get('global_matrix')
+    if rot_euler_property and global_matrix_property:
+      self.init_with_properties(rot_euler_property, global_matrix_property, parent_global_matrix_property)
+    else:
+      self.init_with_blender_bone(bone)
+  
+  def init_with_properties(self, rot_euler_property, global_matrix_property, parent_global_matrix_property=None):
+    global_matrix = mathutils.Matrix(global_matrix_property)
+    if parent_global_matrix_property:
+      parent_global_matrix = mathutils.Matrix(parent_global_matrix_property)
+      self.bone_matrix_local = parent_global_matrix.inverted() @ global_matrix
+    else:
+      self.bone_matrix_local = global_matrix
+    self.bone_matrix_inv = self.bone_matrix_local.inverted()
+    self.pos, self.rot, self.scale = self.bone_matrix_local.decompose()
+    self.rot_euler = mathutils.Euler(rot_euler_property)
+  
+  def init_with_blender_bone(self, bone):
     if bone.parent:
       bone_parent_matrix_inv = bone.parent.matrix_local.copy()
       bone_parent_matrix_inv.invert()
@@ -47,11 +70,7 @@ class BoneTransform:
     self.bone_matrix_inv = self.bone_matrix_local.copy()
     self.bone_matrix_inv.invert()
     self.pos, self.rot, self.scale = self.bone_matrix_local.decompose()
-    rot_euler_property = bone.get('local_euler')  # Set by MDLX importer.
-    if rot_euler_property:
-      self.rot_euler = mathutils.Euler(rot_euler_property)
-    else:
-      self.rot_euler = self.rot.to_euler()
+    self.rot_euler = self.rot.to_euler()
 
 
 class Keyframe:
@@ -415,8 +434,13 @@ class MsetParser:
       mat_position[2][3] = position[2]
       local_matrix = mat_position @ mat_rotation @ mat_scale
       if parent_index >= 0:
-        global_matrix = self.armature.data.edit_bones[
-            parent_index].matrix @ local_matrix
+        parent_edit_bone = self.armature.data.edit_bones[parent_index]
+        parent_global_matrix = parent_edit_bone.get('global_matrix')
+        if parent_global_matrix:
+          global_matrix = mathutils.Matrix(parent_global_matrix) @ local_matrix
+        else:
+          global_matrix = self.armature.data.edit_bones[
+              parent_index].matrix @ local_matrix
       else:
         global_matrix = local_matrix
 
@@ -430,6 +454,8 @@ class MsetParser:
       # Store a custom property that preserves the original Euler angles.
       # The importer will apply keyframes on top of these angles.
       bone['local_euler'] = local_euler
+      bone['global_matrix'] = global_matrix
+      bone.layers[1] = True
 
     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
@@ -474,6 +500,12 @@ class MsetParser:
         constraint.subtarget = active_bone_name
         constraint.track_axis = 'TRACK_X'
         constraint.lock_axis = 'LOCK_Y'
+
+    # Add IK bones without any constraints to a separate layer for easier control.
+    for i in range(header.model_bone_count, header.aux_bone_count + header.model_bone_count):
+      aux_bone_name = self.get_bone_name(i, header)
+      if not self.armature.pose.bones[aux_bone_name].constraints:
+        self.armature.data.bones[aux_bone_name].layers[2] = True
 
     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
@@ -611,6 +643,8 @@ class MsetParser:
         pole_target_bone.use_local_location = True
         pole_target_bone.matrix = root_parent_edit_bone.matrix @ pole_transform
         pole_target_bone.parent = root_parent_edit_bone
+        pole_target_bone.layers[1] = True
+        pole_target_bone.layers[2] = True
 
         bpy.ops.object.mode_set(mode='POSE', toggle=False)
 
