@@ -13,7 +13,7 @@ import mathutils
 import os
 import re
 
-from . import readutil
+from .readutil import readutil
 
 Options = collections.namedtuple('Options', [])
 

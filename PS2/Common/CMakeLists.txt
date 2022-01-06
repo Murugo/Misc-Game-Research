@@ -1,8 +1,6 @@
 # CMAKE_MINIMUM_REQUIRED(VERSION 3.1)
 # SET(CMAKE_SYSTEM_VERSION 10.0)
 
-# PROJECT(io_kh2fm)
-
 # SET(CMAKE_CXX_STANDARD 11)
 # SET(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -17,11 +15,13 @@ MESSAGE("Python_LIBRARIES = " ${Python_LIBRARIES})
 INCLUDE_DIRECTORIES(./gsutil/)
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
 
-# Compile gsutil to add-on directory.
+# Compile gsutil to shared directory.
 SET(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/gsutil)
 SET(CMAKE_SWIG_OUTDIR ${CMAKE_CURRENT_SOURCE_DIR}/gsutil)
 
 SET(CMAKE_SWIG_FLAGS "")
+# The below would be nice to have, but does not work yet. See:
+# https://github.com/swig/swig/issues/1009
 # SET(Py_LIMITED_API)
 
 SET_SOURCE_FILES_PROPERTIES(gsutil/gsutil.i PROPERTIES CPLUSPLUS ON)

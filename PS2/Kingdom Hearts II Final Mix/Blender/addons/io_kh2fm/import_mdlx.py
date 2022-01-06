@@ -13,7 +13,7 @@ import math
 import mathutils
 
 from .gsutil import gsutil
-from . import readutil
+from .readutil import readutil
 
 Options = collections.namedtuple('Options', ['USE_EMISSION'])
 

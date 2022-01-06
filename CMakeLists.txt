@@ -8,4 +8,4 @@ set(CPACK_PROJECT_NAME ${PROJECT_NAME})
 set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})
 include(CPack)
 
-add_subdirectory("PS2/Kingdom Hearts II Final Mix/Blender/addons/io_kh2fm")
+add_subdirectory("PS2/Common")
