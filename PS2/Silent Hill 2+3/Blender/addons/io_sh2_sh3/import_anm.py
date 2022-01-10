@@ -99,7 +99,7 @@ class AnmParserSh2:
         # Hack to re-align the start of the frame to the nearest word.
         # SH2 animation data is not always contiguous...
         # (Why is this not a concern in practice? Because the game stores
-        # a table in the executable which points to the tart of each clip
+        # a table in the executable which points to the start of each clip
         # in the ANM.)
         flags = (flags >> 16) & 0xFFFF | (f.read_uint16() << 16)
 
