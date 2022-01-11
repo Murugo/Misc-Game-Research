@@ -208,7 +208,7 @@ class AnmParser:
     while f.tell() < f.filesize:
       # if frame_index >= 250:
       #   break
-      if bone_base_index > 0 and (f.tell() - 0x4) % frame_size == 0:
+      if bone_base_index > 0 and ((f.tell() - 0x4) % frame_size) == 0:
         frame_index += 1
         bone_base_index = 0
         # break  # Just the first frame for now
@@ -216,8 +216,8 @@ class AnmParser:
       flags = f.read_uint32()
       for ind in range(8):
         flag = (flags >> (ind << 2)) & 0x7
-        print(
-            f'Bone {bone_base_index + ind}: Flag {hex(flag)} Offs {hex(f.tell())}')
+        # print(
+        #     f'Bone {bone_base_index + ind}: Flag {hex(flag)} Offs {hex(f.tell())}')
         if flag == 0:
           continue
 
