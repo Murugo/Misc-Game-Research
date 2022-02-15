@@ -259,6 +259,8 @@ class MdlParser:
       helper_palette_offs = offs + f.read_uint32()
       f.skip(12)
       texture_index_offs = offs + f.read_uint32()
+      f.skip(4)
+      material_type, display_group = f.read_nuint16(2)
 
       morph_refs = []
       if morph_ref_count:
@@ -282,8 +284,10 @@ class MdlParser:
 
       # Build Blender object.
       offs_str = '{0:#010x}'.format(offs)
-      objname = f'{self.basename}_m_{submesh_index}_{offs_str}' + (
-          '_t' if blend else '') + ('_b' if morph_ref_count > 0 else '')
+      objname = f'{self.basename}_m_{submesh_index}_{offs_str}'
+      objname += f'_{material_type}_{display_group}'
+      objname += '_t' if blend else ''
+      objname += '_b' if morph_ref_count > 0 else ''
       mesh_data = bpy.data.meshes.new(objname + '_mesh_data')
       mesh_data.from_pydata(vtx, [], tri)
       mesh_data.update()
