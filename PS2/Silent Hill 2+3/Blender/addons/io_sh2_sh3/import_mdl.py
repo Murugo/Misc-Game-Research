@@ -279,7 +279,7 @@ class MdlParser:
       texture_index = f.read_int16()
 
       f.seek(vif_offs)
-      vtx, vn, uv, tri, vtx_group_dict = self.run_vif_parser(
+      vtx, vn, uv, tri, vtx_group_dict, primary_bone_list = self.run_vif_parser(
           f.read(vif_qwd * 0x10), vif_addr, bone_palette, helper_palette)
 
       # Build Blender object.
@@ -304,6 +304,9 @@ class MdlParser:
           self.mat_manager.get_material(texture_index, blend,
                                         self.basename))
 
+      # Required to derive the original position values for each vertex.
+      obj['primary_bone_list'] = primary_bone_list
+
       # Apply blendshapes if used.
       if morph_refs and self.morph_targets:
         shape_key = obj.shape_key_add(name='ShapeKey_Base')
@@ -324,7 +327,7 @@ class MdlParser:
             if len(packet) % 0x4 > 0:
               packet += b'\x00' * (0x4 - len(packet) % 0x4)
 
-          vtx_morph, vn_morph, _, _, _ = self.run_vif_parser(
+          vtx_morph, vn_morph, _, _, _, _ = self.run_vif_parser(
               packet, vif_addr, bone_palette, helper_palette, morph_only=True)
           for i in range(len(vtx_morph)):
             shape_key.data[i].co = vtx_morph[i]
@@ -365,6 +368,7 @@ class MdlParser:
     vtx = []
     vn = []
     uv = []
+    primary_bone_list = []
     for vtx_group_index in range(vertex_group_count):
       vertex_count, helper_count, vertex_data_addr, vertex_data_end_addr = self.vif_parser.read_uint32_xyzw(
           vif_addr + 0x2 + vtx_group_index * 0x2)
@@ -393,6 +397,8 @@ class MdlParser:
         pos_v = self.bone_matrices[bone_indices[0]
                                    ] @ mathutils.Vector(pos + [1.0])
         vtx.append(pos_v.to_3d().to_tuple())
+
+        primary_bone_list.append(bone_indices[0])
 
         normal = self.vif_parser.read_int32_xyzw(
             vertex_data_addr + 0x1 + vtx_index * 0x4)
@@ -440,7 +446,7 @@ class MdlParser:
           tri.append((t1, t2, t3))
       reverse = not reverse
 
-    return vtx, vn, uv, tri, vtx_group_dict
+    return vtx, vn, uv, tri, vtx_group_dict, primary_bone_list
 
   def parse_textures(self, f, image_count, image_sector_offs, header):
     # {image index -> [(texture index, palette index)]}
