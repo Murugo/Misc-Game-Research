@@ -11,6 +11,5 @@
   * Blender may garbage collect textures if they are not displayed in the UI for some time, causing materials to appear black.
   * SH2: .DDS character position keyframes in the scene are incorrect.
   * SH2: Face animations are not yet supported (these are stored in .CLS files).
-  * SH3: Some .MDL files fail to import textures (e.g. models in the `it/` folder).
 
 <img src="img/jamesandheather.png" alt="So it was all your work!" width="85%">
