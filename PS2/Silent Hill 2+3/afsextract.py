@@ -30,7 +30,7 @@ def getstring(b, offs=0, maxsize=0x100):
   maxoffs = startoffs + maxsize
   while offs < len(b) and offs < maxoffs and b[offs] != 0:
     offs += 1
-  return buf[startoffs:offs].decode('ascii')
+  return b[startoffs:offs].decode('ascii')
 
 
 parser.add_argument('afspath', help='Input path of .AFS file', nargs=1)
