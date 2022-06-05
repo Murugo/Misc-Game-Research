@@ -1,5 +1,7 @@
 # pylint: disable=import-error
 
+import os
+
 bl_info = {
     "name": "Silent Hill 2/3",
     "author": "Murugo",
@@ -16,6 +18,7 @@ from bpy.props import (
     StringProperty,
 )
 from bpy_extras.io_utils import (
+    ExportHelper,
     ImportHelper,
 )
 import bpy
@@ -32,6 +35,10 @@ if "bpy" in locals():
     importlib.reload(import_pack)
   if "import_dds" in locals():
     importlib.reload(import_dds)
+  if "import_map" in locals():
+    importlib.reload(import_map)
+  if "export_pack" in locals():
+    importlib.reload(export_pack)
 
 
 class ImportMdl(bpy.types.Operator, ImportHelper):
@@ -100,35 +107,37 @@ class ImportAnmSh3(bpy.types.Operator, ImportHelper):
     pass
 
 
-class PackModelSelectorItem(bpy.types.PropertyGroup):
-  """Item in a PACK model selection dialog"""
-  id: IntProperty(name="Model ID", default=-1)
-  id_hex: StringProperty(name="Model ID (Hex)", default="")
+class PackTargetSelectorItem(bpy.types.PropertyGroup):
+  """Item in a PACK target selection dialog"""
+  type: IntProperty(name="Type", default=-1)
+  id: IntProperty(name="Target ID", default=-1)
+  id_hex: StringProperty(name="Target ID (Hex)", default="")
   alias: StringProperty(name="Alias", default="")
   filename: StringProperty(name="Filename", default="")
 
 
-class PackModelSelector_UL_List(bpy.types.UIList):
+class PackTargetSelector_UL_List(bpy.types.UIList):
   """PACK model selection display list"""
 
   def draw_item(self, context, layout, data, item, icon, active_data, active_propname):
     if self.layout_type in {'DEFAULT', 'COMPACT'}:
+      icon_name = 'VIEW_CAMERA' if item.type == 0x3 else 'ANIM_DATA'
       split = layout.split(factor=0.33)
-      split.label(text=item.id_hex, icon='ANIM_DATA')
+      split.label(text=item.id_hex, icon=icon_name)
       split.label(text=item.alias)
       split.label(text=item.filename)
 
 
-class PackModelSelector(bpy.types.Operator):
-  """Dialog to select a model ID from a PACK file"""
-  bl_idname = "import_sh3.pack_select_model"
-  bl_label = "Select a model ID to import animation data."
+class PackTargetSelector(bpy.types.Operator):
+  """Dialog to select a target ID from a PACK file"""
+  bl_idname = "import_sh3.pack_select_target"
+  bl_label = "Select a target ID to import animation data."
   bl_options = {'REGISTER', 'INTERNAL', 'UNDO'}
 
   filepath: StringProperty(default="")
-  model_id_list: StringProperty(default="")
-  model_ids: CollectionProperty(type=PackModelSelectorItem)
-  model_id_index: IntProperty(default=0)
+  target_list: StringProperty(default="")
+  targets: CollectionProperty(type=PackTargetSelectorItem)
+  target_index: IntProperty(default=0)
 
   @classmethod
   def poll(cls, context):
@@ -137,35 +146,42 @@ class PackModelSelector(bpy.types.Operator):
   def execute(self, context):
     from . import import_pack
 
-    model_id = self.model_ids[self.model_id_index].id
-    if model_id <= 0:
-      return 'CANCELLED'
-    status, msg = import_pack.load(context, self.filepath, model_id)
+    if self.target_index < 0 or self.target_index > len(self.targets):
+      return {'CANCELLED'}
+    target_type = self.targets[self.target_index].type
+    target_id = self.targets[self.target_index].id
+    status, msg = import_pack.load(context, self.filepath, target_type, target_id)
     if msg:
       self.report({'ERROR'}, msg)
     return {status}
 
   def invoke(self, context, event):
-    for model_id in self.model_id_list.split(','):
+    target_list_parsed = [v.split(',') for v in self.target_list.split(';')]
+    for target_type, target_id in target_list_parsed:
       try:
-        item = self.model_ids.add()
-        item.id = int(model_id)
+        item = self.targets.add()
+        item.type = int(target_type)
+        item.id = int(target_id)
         item.id_hex = hex(item.id)
 
-        from . import import_anm
-        if item.id in import_anm.SH3_MODEL_ID_INFO:
-          _, alias, filename = import_anm.SH3_MODEL_ID_INFO[item.id]
-          item.alias = alias
-          item.filename = filename
+        if item.type == 0x1:
+          from . import import_anm
+          if item.id in import_anm.SH3_MODEL_ID_INFO:
+            _, alias, filename = import_anm.SH3_MODEL_ID_INFO[item.id]
+            item.alias = alias
+            item.filename = filename
+        elif item.type == 0x3:
+          item.alias = 'Camera'
+          item.filename = ''
       except ValueError:
-        self.report({'ERROR'}, f'Got invalid model ID: {model_id}')
+        self.report({'ERROR'}, f'Got invalid target: type={target_type} id={target_id}')
         return {'CANCELLED'}
     return context.window_manager.invoke_props_dialog(self)
 
   def draw(self, context):
     row = self.layout
-    row.template_list("PackModelSelector_UL_List", "", self,
-                      "model_ids", self, "model_id_index")
+    row.template_list("PackTargetSelector_UL_List", "", self,
+                      "targets", self, "target_index")
 
 
 class ImportPackSh3(bpy.types.Operator, ImportHelper):
@@ -181,17 +197,107 @@ class ImportPackSh3(bpy.types.Operator, ImportHelper):
     from . import import_pack
 
     keywords = self.as_keywords(ignore=("filter_glob",))
-    model_ids, msg = import_pack.get_model_list(context, **keywords)
+    targets, msg = import_pack.get_target_list(context, **keywords)
     if msg:
       self.report({'ERROR'}, msg)
       return {'CANCELLED'}
-    if not model_ids:
+    if not targets:
       self.report(
           {'ERROR'}, 'PACK file contains no animation tracks that can be imported.')
       return {'CANCELLED'}
 
-    bpy.ops.import_sh3.pack_select_model(
-        'INVOKE_DEFAULT', filepath=self.filepath, model_id_list=",".join([str(x) for x in model_ids]))
+    bpy.ops.import_sh3.pack_select_target(
+        'INVOKE_DEFAULT', filepath=self.filepath, target_list=";".join([f'{x},{y}' for x, y in targets]))
+    return {'FINISHED'}
+
+  def draw(self, context):
+    pass
+
+
+class PackExportTargetSelector(bpy.types.Operator):
+  """Dialog to select a target ID from a PACK file for export."""
+  bl_idname = "export_sh3.pack_select_export_target"
+  bl_label = "Select a target ID to export animation data."
+  bl_options = {'REGISTER', 'INTERNAL', 'UNDO'}
+
+  filepath: StringProperty(default="")
+  target_list: StringProperty(default="")
+  targets: CollectionProperty(type=PackTargetSelectorItem)
+  target_index: IntProperty(default=0)
+
+  @classmethod
+  def poll(cls, context):
+    return True
+
+  def execute(self, context):
+    from . import export_pack
+
+    if self.target_index < 0 or self.target_index > len(self.targets):
+      return {'CANCELLED'}
+    target_type = self.targets[self.target_index].type
+    target_id = self.targets[self.target_index].id
+    status, msg = export_pack.patch(context, self.filepath, target_type, target_id)
+    if msg:
+      self.report({'ERROR'}, msg)
+    return {status}
+  
+  def invoke(self, context, event):
+    target_list_parsed = [v.split(',') for v in self.target_list.split(';')]
+    for target_type, target_id in target_list_parsed:
+      try:
+        item = self.targets.add()
+        item.type = int(target_type)
+        item.id = int(target_id)
+        item.id_hex = hex(item.id)
+
+        if item.type == 0x1:
+          from . import import_anm
+          if item.id in import_anm.SH3_MODEL_ID_INFO:
+            _, alias, filename = import_anm.SH3_MODEL_ID_INFO[item.id]
+            item.alias = alias
+            item.filename = filename
+        elif item.type == 0x3:
+          item.alias = 'Camera'
+          item.filename = ''
+      except ValueError:
+        self.report({'ERROR'}, f'Got invalid target: type={target_type} id={target_id}')
+        return {'CANCELLED'}
+    return context.window_manager.invoke_props_dialog(self)
+
+  def draw(self, context):
+    row = self.layout
+    row.template_list("PackTargetSelector_UL_List", "", self,
+                      "targets", self, "target_index")
+
+class ExportPackSh3(bpy.types.Operator, ExportHelper):
+  """Write animation track(s) to an existing Silent Hill 3 PACK file"""
+  bl_idname = "export_sh3.pack"
+  bl_label = "Export Silent Hill 3 (PS2) Cutscene Pack (PACK)"
+  bl_options = {"PRESET", "UNDO"}
+
+  filename_ext = ".pack"
+  filter_glob: StringProperty(default="*.pack", options={'HIDDEN'})
+
+  def execute(self, context):
+    from . import import_pack
+
+    if not os.path.exists(self.filepath):
+      self.report({'ERROR'}, 'Please select an existing PACK file to patch the animation for the selected object.')
+      return {'CANCELLED'}
+
+    keywords = self.as_keywords(ignore=("filter_glob","check_existing"))
+    targets, msg = import_pack.get_target_list(context, **keywords)
+    if msg:
+      self.report({'ERROR'}, msg)
+      return {'CANCELLED'}
+    if not targets:
+      self.report(
+          {'ERROR'}, 'PACK file contains no animation tracks that can be imported.')
+      return {'CANCELLED'}
+
+    bpy.ops.export_sh3.pack_select_export_target(
+        'INVOKE_DEFAULT', filepath=self.filepath, target_list=";".join([f'{x},{y}' for x, y in targets]))
+    print('OK:', targets)
     return {'FINISHED'}
 
   def draw(self, context):
@@ -277,6 +383,28 @@ class ImportDdsSh2(bpy.types.Operator, ImportHelper):
     pass
 
 
+class ImportMapSh3(bpy.types.Operator, ImportHelper):
+  """Load a Silent Hill 3 MAP file"""
+  bl_idname = "import_sh3.map"
+  bl_label = "Import Silent Hill 3 (PS2) Map (MAP)"
+  bl_options = {"PRESET", "UNDO"}
+
+  filename_ext = ".map"
+  filter_glob: StringProperty(default="*.map", options={'HIDDEN'})
+
+  def execute(self, context):
+    from . import import_map
+
+    keywords = self.as_keywords(ignore=("filter_glob",))
+    status, msg = import_map.load(context, **keywords)
+    if msg:
+      self.report({'ERROR'}, msg)
+    return {status}
+
+  def draw(self, context):
+    pass
+
+
 def menu_func_import(self, context):
   self.layout.operator(ImportMdl.bl_idname,
                        text="Silent Hill 2/3 Model (.mdl)")
@@ -288,23 +416,32 @@ def menu_func_import(self, context):
                        text="Silent Hill 3 Cutscene Pack (.pack)")
   self.layout.operator(ImportDdsSh2.bl_idname,
                        text="Silent Hill 2 Cutscene Pack (.dds)")
+  self.layout.operator(ImportMapSh3.bl_idname,
+                       text="Silent Hill 3 Map (.map)")
+
+
+def menu_func_export(self, context):
+  self.layout.operator(ExportPackSh3.bl_idname, text="Silent Hill 3 Cutscene Pack (.pack)")
 
 
 classes = (ImportMdl, ImportAnmSh2, ImportAnmSh3,
-           ImportPackSh3,  PackModelSelectorItem, PackModelSelector_UL_List, PackModelSelector,
-           ImportDdsSh2, DdsObjectSelectorItem, DdsObjectSelector_UL_List, DdsObjectSelector)
+           ImportPackSh3,  PackTargetSelectorItem, PackTargetSelector_UL_List, PackTargetSelector,
+           ImportDdsSh2, DdsObjectSelectorItem, DdsObjectSelector_UL_List, DdsObjectSelector,
+           ImportMapSh3, ExportPackSh3, PackExportTargetSelector)
 
 
 def register():
   for cls in classes:
     bpy.utils.register_class(cls)
   bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
+  bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
 
 
 def unregister():
   for cls in classes:
     bpy.utils.unregister_class(cls)
   bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
+  bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
 
 
 if __name__ == "__main__":

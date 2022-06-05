@@ -84,3 +84,16 @@ class BinaryFileReader:
 
   def skip(self, length):
     self.f.read(length)
+
+
+class BinaryFileReadWriter(BinaryFileReader):
+  def __init__(self, filepath):
+    self.f = open(filepath, 'rb+')
+    self.filesize = os.path.getsize(filepath)
+    self.base_offset = 0
+
+  def write_float32(self, val):
+    self.f.write(struct.pack('<f', val))
+
+  def write_nfloat32(self, vals):
+    self.f.write(struct.pack('<' + 'f' * len(vals), *vals))

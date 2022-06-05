@@ -19,24 +19,14 @@ class PackImportError(Exception):
 
 
 class PackParser:
-  def __init__(self, armature, target_model_id=-1):
+  def __init__(self, object, target_type=-1, target_id=-1):
     self.basename = ''
-    self.armature = armature
+    self.object = object
 
-    self.target_model_id = target_model_id
-    # TODO: Check before removing fallback logic.
-    # if self.target_model_id < 0:
-    #   bone_count = len(self.armature.data.bones)
-    #   if bone_count == 73:
-    #     self.target_model_id = 0x100  # chhaa (Heather)
-    #   elif bone_count == 109:
-    #     self.target_model_id = 0x102  # chcaa (Claudia)
-    #   elif bone_count == 70:
-    #     self.target_model_id = 0x103  # chvaa (Vincent)
-    #   elif bone_count == 92:
-    #     self.target_model_id = 0x101  # 104? chdaa (Douglas)
+    self.target_type = target_type
+    self.target_id = target_id
 
-  def get_model_list(self, filepath):
+  def get_target_list(self, filepath):
     self.basename = os.path.splitext(os.path.basename(filepath))[0]
     f = readutil.BinaryFileReader(filepath)
 
@@ -48,7 +38,7 @@ class PackParser:
     file_headers = [f.read_nuint32(4) for _ in range(file_count)]
     for file_offs, file_type, file_size, _ in file_headers:
       if file_type == 0x2:
-        return self.get_model_ids_from_track_file(f, file_offs)
+        return self.get_targets_from_track_file(f, file_offs)
 
   def parse(self, filepath):
     self.basename = os.path.splitext(os.path.basename(filepath))[0]
@@ -61,15 +51,20 @@ class PackParser:
     f.skip(4)
     file_headers = [f.read_nuint32(4) for _ in range(file_count)]
     for file_offs, file_type, file_size, _ in file_headers:
-      if file_type == 0x1:
+      if file_type == 0x1 and self.target_type == 0x1:
         self.parse_morph_control_file(f, file_offs)
       elif file_type == 0x2:
-        self.parse_motion_track_file(f, file_offs)
+        if self.target_type == 0x1:
+          self.parse_motion_track_file(f, file_offs)
+        elif self.target_type == 0x3:
+          self.parse_motion_track_file_for_camera(f, file_offs)
 
   def parse_morph_control_file(self, f, offs):
+    self.armature = self.object
+
     f.seek(offs)
     model_id = f.read_uint32()
-    if model_id != self.target_model_id:
+    if model_id != self.target_id:
       return
     f.skip(4)  # Zero?
 
@@ -121,19 +116,18 @@ class PackParser:
         fcurve.keyframe_points[i].interpolation = 'LINEAR'
         fcurve.keyframe_points[i].co = time + 1, value
 
-  def get_model_ids_from_track_file(self, f, offs):
+  def get_targets_from_track_file(self, f, offs):
     f.seek(offs)
     track_count = f.read_uint32()
 
-    model_ids = set()
+    targets = set()
     for _ in range(track_count):
       track_type, index_and_id, _, _, _ = f.read_nuint32(5)
-      if track_type != 0x1:
-        continue
-      model_id = (index_and_id >> 16) & 0xFFFF
-      model_ids.add(model_id)
+      if (track_type == 0x1 and self.object.type == 'ARMATURE') or (track_type == 0x3 and self.object.type == 'CAMERA'):
+        track_id = (index_and_id >> 16) & 0xFFFF
+        targets.add((track_type, track_id))
 
-    return sorted(list(model_ids))
+    return sorted(list(targets))
 
   def parse_motion_track_file(self, f, offs):
     f.seek(offs)
@@ -150,6 +144,8 @@ class PackParser:
      # TODO: Separate parsing and Blender related code into two functions
     bpy.context.view_layer.objects.active = self.armature
     bpy.ops.object.mode_set(mode='POSE', toggle=False)
+    wm = bpy.context.window_manager
+    wm.progress_begin(0, max_frame_count)
 
     for pose_bone in self.armature.pose.bones:
       pose_bone.rotation_mode = 'XYZ'
@@ -157,7 +153,7 @@ class PackParser:
     if not self.armature.animation_data:
       self.armature.animation_data_create()
     action = self.armature.animation_data.action = bpy.data.actions.new(
-        f'{self.basename}_PACK')
+        f'{self.basename}_PACK_Char_{hex(self.target_id)}')
 
     # TODO: Cache inverted bones to speed up import.
     # global_bone_matrices = dict()
@@ -174,12 +170,13 @@ class PackParser:
     all_bone_fcurves = dict()
 
     for frame_index in range(max_frame_count):
+      wm.progress_update(frame_index)
       pose_matrices = dict()
 
       for track_type, track_index, track_id, frame_width, frame_count in tracks:
         if frame_index >= frame_count:
           continue
-        if track_id != self.target_model_id:
+        if track_type != self.target_type or track_id != self.target_id:
           f.skip(frame_width)
           continue
         euler_xyz = f.read_nfloat32(3)
@@ -230,49 +227,151 @@ class PackParser:
           else:
             fcurve.keyframe_points[-1].co = frame_index + 1, pos_kf_xyz[j - 3]
 
+    wm.progress_end()
     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
+  def parse_motion_track_file_for_camera(self, f, offs):
+    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+    
+    camera_obj = self.object
+    camera = camera_obj.data
+    if 'CameraParent' in bpy.context.scene.objects:
+      camera_parent_obj = bpy.context.scene.objects['CameraParent']
+    else:
+      camera_parent_obj = bpy.data.objects.new('CameraParent', None)
+      camera_parent_obj.empty_display_type = 'PLAIN_AXES'
+      camera_obj.parent = camera_parent_obj
+      bpy.context.scene.collection.objects.link(camera_parent_obj)
+    camera_obj.location = (0, 0, 0)
+    camera_obj.rotation_euler = mathutils.Euler((0, 0, 0))
+    if 'CameraTarget' in bpy.context.scene.objects:
+      camera_target_obj = bpy.context.scene.objects['CameraTarget']
+    else:
+      camera_target_obj = bpy.data.objects.new('CameraTarget', None)
+      camera_target_obj.empty_display_type = 'PLAIN_AXES'
+      bpy.context.scene.collection.objects.link(camera_target_obj)
 
-def get_selected_armature():
-  armature = None
+      track_to_constraint = camera_parent_obj.constraints.new(type='TRACK_TO')
+      track_to_constraint.target = camera_target_obj
+      track_to_constraint.track_axis = 'TRACK_NEGATIVE_Z'
+      track_to_constraint.up_axis = 'UP_Y'
+    
+    camera['Unk0x18'] = 0.0
+    
+    if not camera.animation_data:
+      camera.animation_data_create()
+    if not camera_obj.animation_data:
+      camera_obj.animation_data_create()
+    if not camera_parent_obj.animation_data:
+      camera_parent_obj.animation_data_create()
+    if not camera_target_obj.animation_data:
+      camera_target_obj.animation_data_create()
+    camera.animation_data.action = camera_data_action = bpy.data.actions.new(f'{self.basename}_PACK')
+    camera_obj.animation_data.action = camera_action = bpy.data.actions.new(f'{self.basename}_PACK')
+    camera_parent_obj.animation_data.action = camera_parent_action = bpy.data.actions.new(f'{self.basename}_PACK')
+    camera_target_obj.animation_data.action = camera_target_action = bpy.data.actions.new(f'{self.basename}_PACK')
+
+    f.seek(offs)
+    track_count = f.read_uint32()
+
+    # TODO: This transformation should be reversed for export.
+    m_scale = mathutils.Matrix()
+    for i in range(3):
+      m_scale[i][i] = 5
+    # m_rot = mathutils.Euler((-math.pi / 2, 0, math.pi)).to_matrix().to_4x4()
+    m_rot = mathutils.Euler((math.pi / 2, 0, math.pi)).to_matrix().to_4x4()
+    m = m_scale @ m_rot
+
+    tracks = []
+    max_frame_count = 0
+    for _ in range(track_count):
+      track_type, index_and_id, frame_width, frame_count, _ = f.read_nuint32(5)
+      tracks.append((track_type, index_and_id & 0xFFFF,
+                    (index_and_id >> 16) & 0xFFFF, frame_width, frame_count))
+      max_frame_count = max(max_frame_count, frame_count)
+    
+    fcurves = []
+    for frame_index in range(max_frame_count):
+      for track_type, track_index, track_id, frame_width, frame_count in tracks:
+        if frame_index >= frame_count:
+          continue
+        if track_type != self.target_type or track_id != self.target_id:
+          f.skip(frame_width)
+          continue
+        camera_xyz = mathutils.Vector(f.read_nfloat32(3)).to_4d()
+        target_xyz = mathutils.Vector(f.read_nfloat32(3)).to_4d()
+        tilt, fov = f.read_nfloat32(2)
+
+        # Assumes that the default sensor width in camera settings is 36 mm.
+        focal_length = camera.sensor_width * 0.3 / math.tan(math.radians(fov / 2.0))
+
+        kf_camera_xyz = m @ camera_xyz
+        kf_target_xyz = m @ target_xyz
+
+        if frame_index == 0:
+          fcurves = [
+            camera_parent_action.fcurves.new(f'location', index=0),
+            camera_parent_action.fcurves.new(f'location', index=1),
+            camera_parent_action.fcurves.new(f'location', index=2),
+            camera_target_action.fcurves.new(f'location', index=0),
+            camera_target_action.fcurves.new(f'location', index=1),
+            camera_target_action.fcurves.new(f'location', index=2),
+            camera_action.fcurves.new(f'rotation_euler', index=2),
+            camera_data_action.fcurves.new(f'lens')
+          ]
+        
+        for i, fcurve in enumerate(fcurves):
+          fcurve.keyframe_points.add(1)
+          fcurve.keyframe_points[-1].interpolation = 'LINEAR'
+          if i < 3:
+            fcurve.keyframe_points[-1].co = frame_index + 1, kf_camera_xyz[i]
+          elif i < 6:
+            fcurve.keyframe_points[-1].co = frame_index + 1, kf_target_xyz[i - 3]
+          elif i == 6:
+            fcurve.keyframe_points[-1].co = frame_index + 1, math.radians(tilt)
+          else:
+            fcurve.keyframe_points[-1].co = frame_index + 1, focal_length
+
+
+def get_selected_object():
+  object = None
 
   for obj in bpy.context.selected_objects:
-    if obj.type != 'ARMATURE':
-      continue
-    if armature:
-      return None, 'More than one armature selected. Please select only the target armature before importing the PACK.'
-    armature = obj
+    if object:
+      return None, 'More than one object selected. Please select only the target object before importing the PACK.'
+    object = obj
 
-  if not armature:
+  # If no objects are selected, look for an armature to apply the animation.
+  if not object:
     for obj in bpy.context.scene.objects:
       if obj.type != 'ARMATURE':
         continue
-      if armature:
-        return None, 'More than one armature found. Please select an armature before importing the PACK.'
-      armature = obj
+      if object:
+        return None, 'More than one object found. Please select an object before importing the PACK.'
+      object = obj
 
-  if not armature:
-    return None, 'No armatures found in the scene.'
-  return armature, ''
+  if not object:
+    return None, 'No armatures found in the scene. If you are importing a camera track, please select the camera first.'
+  return object, ''
 
 
-def get_model_list(context, filepath):
-  armature, error_reason = get_selected_armature()
+def get_target_list(context, filepath):
+  object, error_reason = get_selected_object()
 
   if error_reason:
     return [], error_reason
 
-  parser = PackParser(armature)
-  return parser.get_model_list(filepath), ''
+  parser = PackParser(object)
+  return parser.get_target_list(filepath), ''
 
 
-def load(context, filepath, target_model_id=-1):
-  armature, error_reason = get_selected_armature()
+def load(context, filepath, target_type=-1, target_id=-1):
+  object, error_reason = get_selected_object()
 
   if error_reason:
     return 'CANCELLED', error_reason
 
-  parser = PackParser(armature, target_model_id)
+  parser = PackParser(object, target_type, target_id)
   parser.parse(filepath)
 
   return 'FINISHED', ''

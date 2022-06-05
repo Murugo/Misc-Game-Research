@@ -80,11 +80,6 @@ class ModelHeader:
     self.morph_data_count = f.read_uint32()
     self.morph_data_offs = offs + f.read_uint32()
 
-
-class MdlImportError(Exception):
-  pass
-
-
 class MdlParser:
   def __init__(self):
     self.basename = ''
