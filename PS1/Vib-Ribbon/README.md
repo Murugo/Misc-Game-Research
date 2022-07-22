@@ -1,6 +1,6 @@
 # Vib-Ribbon (PS1, 1999)
 
-<center><img src="img/cast.gif" title="OK, time to try the 'bronze course!'" width=85%></center>
+<img src="img/cast.gif" title="OK, time to try the 'bronze course!'">
 
 **io_vib_ribbon** - A Blender add-on for importing models (TMD) and animations (ANM) from Vib-Ribbon. Compatible with Blender 2.8.x only. To install:
   * Pack the contents of `Blender/addons/io_vib_ribbon/` in a ZIP file. Ensure that the `readutil/` shortcut and its contents are included in the ZIP as well.
