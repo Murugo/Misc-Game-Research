@@ -25,7 +25,7 @@ class AnmParser:
     # Assumes that Blender will always sort the list of objects by name.
     objects = bpy.context.selected_objects
     if not objects:
-      raise AnmImportError('No objects found. Please select all objects belonging to the model before importing the ANM.')
+      raise AnmImportError('No objects select. Please select all objects belonging to the model before importing the ANM.')
     
     self.basename = os.path.splitext(os.path.basename(filepath))[0]
     f = readutil.BinaryFileReader(filepath)
@@ -77,7 +77,7 @@ class AnmParser:
         pos = []
         obj_index, flags = f.read_nuint8(2)
         if obj_index >= len(objects):
-          raise AnmImportError('Not enough objects selected! Tried to animate nonexistent object index: {obj_index}, selected: {len(objects)}')
+          raise AnmImportError(f'Not enough objects selected! Tried to animate nonexistent object index: {obj_index}, selected: {len(objects)}')
         if (flags & 0x1) > 0:
           rot = [v / 0x1000 * math.pi * 2 for v in f.read_nint16(3)]
         if (flags & 0x2) > 0:
