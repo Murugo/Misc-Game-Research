@@ -56,7 +56,9 @@ class TmdParser:
         if mode == 0x40:
           # Straight line
           r, g, b, mode_dup = f.read_nuint8(4)
-          ind.append(f.read_nuint16(2))
+          pair = f.read_nuint16(2)
+          if pair[0] != pair[1]:
+            ind.append(pair)
         elif mode == 0x21:
           # Flat triangle, no texture
           r, g, b, mode_dup = f.read_nuint8(4)
@@ -64,9 +66,6 @@ class TmdParser:
           f.skip(0x2)
         else:
           raise TmdImportError(f'Unrecognized primitive mode {hex(mode)} at offset {hex(f.tell() - 1)}')
-      
-      if i == 6:
-        print(ind)
       
       offs_str = '{0:#010x}'.format(start_offs)
       obj_name = f'{self.basename}_m_{i}_{offs_str}'
