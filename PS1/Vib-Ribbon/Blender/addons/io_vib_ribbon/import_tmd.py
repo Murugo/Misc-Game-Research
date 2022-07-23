@@ -64,6 +64,10 @@ class TmdParser:
           r, g, b, mode_dup = f.read_nuint8(4)
           ind.append(f.read_nuint16(3))
           f.skip(0x2)
+        elif mode == 0x29:
+          # Flat quad, no texture
+          r, g, b, mode_dup = f.read_nuint8(4)
+          ind.append(list(set(f.read_nuint16(4))))
         else:
           raise TmdImportError(f'Unrecognized primitive mode {hex(mode)} at offset {hex(f.tell() - 1)}')
       
