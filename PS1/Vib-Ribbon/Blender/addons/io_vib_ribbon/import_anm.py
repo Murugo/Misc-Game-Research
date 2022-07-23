@@ -35,8 +35,15 @@ class AnmParser:
     frame_offs_list = [offs * 2 for offs in f.read_nuint16(frame_count + 1)]
 
     # bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+    frame_base = bpy.context.scene.frame_current
 
     all_fcurves = [None for _ in range(len(objects))]
+
+    def get_fcurve(action, path: str, index: int):
+      fcurve = action.fcurves.find(path, index=index)
+      if fcurve:
+        return fcurve
+      return action.fcurves.new(path, index=index)
 
     def get_obj_and_fcurves(obj_index: int):
       obj = objects[obj_index]
@@ -45,17 +52,16 @@ class AnmParser:
         obj.animation_data.action = bpy.data.actions.new(f'{obj.name}_ANM')
       action = obj.animation_data.action
       if not all_fcurves[obj_index]:
-        # TODO: Use existing fcurves if the object already has them.
         all_fcurves[obj_index] = [
-          action.fcurves.new(f'rotation_euler', index=0),
-          action.fcurves.new(f'rotation_euler', index=1),
-          action.fcurves.new(f'rotation_euler', index=2),
-          action.fcurves.new(f'scale', index=0),
-          action.fcurves.new(f'scale', index=1),
-          action.fcurves.new(f'scale', index=2),
-          action.fcurves.new(f'location', index=0),
-          action.fcurves.new(f'location', index=1),
-          action.fcurves.new(f'location', index=2),
+          get_fcurve(action, 'rotation_euler', index=0),
+          get_fcurve(action, 'rotation_euler', index=1),
+          get_fcurve(action, 'rotation_euler', index=2),
+          get_fcurve(action, 'scale', index=0),
+          get_fcurve(action, 'scale', index=1),
+          get_fcurve(action, 'scale', index=2),
+          get_fcurve(action, 'location', index=0),
+          get_fcurve(action, 'location', index=1),
+          get_fcurve(action, 'location', index=2),
         ]
       obj_fcurves = all_fcurves[obj_index]
       return obj, obj_fcurves
@@ -92,19 +98,19 @@ class AnmParser:
             obj_fcurves[i].keyframe_points.add(1)
             kf = obj_fcurves[i].keyframe_points[-1]
             kf.interpolation = 'LINEAR'
-            kf.co = frame + 1, rot[i]
+            kf.co = frame_base + frame, rot[i]
         if scale:
           for i in range(3):
             obj_fcurves[i + 3].keyframe_points.add(1)
             kf = obj_fcurves[i + 3].keyframe_points[-1]
             kf.interpolation = 'LINEAR'
-            kf.co = frame + 1, scale[i]
+            kf.co = frame_base + frame, scale[i]
         if pos:
           for i in range(3):
             obj_fcurves[i + 6].keyframe_points.add(1)
             kf = obj_fcurves[i + 6].keyframe_points[-1]
             kf.interpolation = 'LINEAR'
-            kf.co = frame + 1, pos[i]
+            kf.co = frame_base + frame, pos[i]
 
       # Hide inactive objects by setting their scale to zero
       for obj_index in range(len(objects)):
@@ -118,7 +124,7 @@ class AnmParser:
           kf_points.add(1)
           kf = kf_points[-1]
           kf.interpolation = 'CONSTANT'
-          kf.co = frame + 1, 0.0
+          kf.co = frame_base + frame, 0.0
 
 def load(context, filepath: str) -> 'tuple(str, str)':
   try:
