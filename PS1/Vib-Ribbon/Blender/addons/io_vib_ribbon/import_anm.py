@@ -49,6 +49,7 @@ class AnmParser:
       obj = objects[obj_index]
       if not obj.animation_data:
         obj.animation_data_create()
+      if not obj.animation_data.action:
         obj.animation_data.action = bpy.data.actions.new(f'{obj.name}_ANM')
       action = obj.animation_data.action
       if not all_fcurves[obj_index]:
