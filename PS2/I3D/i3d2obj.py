@@ -1,4 +1,4 @@
-# Converts a Rule of Rose (PS2) I3D model file (.MDL) to OBJ.
+# Converts a .i3d model file or a Rule of Rose (PS2) .MDL model file to OBJ.
 
 import argparse
 import argparse
@@ -9,7 +9,7 @@ import sys
 import struct
 
 parser = argparse.ArgumentParser(description='''
-Converts a Rule of Rose (PS2) I3D model file (.MDL) to OBJ.
+Converts a .i3d model file or a Rule of Rose (PS2) .MDL model file to OBJ.
 ''')
 
 def err(msg):
@@ -31,7 +31,7 @@ def getfloat32(b, offs):
 def getnfloat32(b, offs, n):
     return struct.unpack('<' + 'f'*n, b[offs:offs+4*n])
 
-parser.add_argument('mdlpath', help='Input path of .MDL file', nargs=1)
+parser.add_argument('mdlpath', help='Input path of .MDL/.I3D file', nargs=1)
 args = parser.parse_args()
 
 if len(args.mdlpath[0]) == 0:
@@ -42,29 +42,30 @@ if len(args.mdlpath[0]) == 0:
 def ReadRpkFile(f, index):
     f.seek(0)
     header = f.read(0x20)
-    if header[:4] != b'RTPK':
-        err("Not an RTPK archive!")
-
-    numfiles = getuint16(header, 0xE)
-    if index < 0 or index >= numfiles:
-        err("File index {} out of range in RTPK archive".format(index))
     totalsize = getuint32(header, 0x4)
     filesize = 0
     fileoffs = 0
+    if header[:4] == b'RTPK':
+        numfiles = getuint16(header, 0xE)
+        if index < 0 or index >= numfiles:
+            err("File index {} out of range in RTPK archive".format(index))
 
-    if header[0xA] == 0x2:  # Offset table only
-        f.seek(index * 0x4 + 0x20)
-        fileoffs = getuint32(f.read(4))
-        if index == numfiles - 1:
-            filesize = totalsize - fileoffs
-        else:
-            filesize = getuint32(f.read(4)) - fileoffs
-    elif header[0xA] == 0x3:  # Size and offset tables
-        f.seek(index * 0x4 + 0x20)
-        filesize = getuint32(f.read(4))
-        f.seek((numfiles + index) * 4 + 0x20)
-        fileoffs = getuint32(f.read(4))
-
+        if header[0xA] == 0x2:  # Offset table only
+            f.seek(index * 0x4 + 0x20)
+            fileoffs = getuint32(f.read(4))
+            if index == numfiles - 1:
+                filesize = totalsize - fileoffs
+            else:
+                filesize = getuint32(f.read(4)) - fileoffs
+        elif header[0xA] == 0x3:  # Size and offset tables
+            f.seek(index * 0x4 + 0x20)
+            filesize = getuint32(f.read(4))
+            f.seek((numfiles + index) * 4 + 0x20)
+            fileoffs = getuint32(f.read(4))
+    elif header[:7] == b'I3D_BIN':
+        filesize = totalsize
+    else:
+        err("Not an RTPK archive or I3D file!")
     f.seek(fileoffs)
     return f.read(filesize)
 
@@ -242,7 +243,7 @@ if __name__ == '__main__':
     buf = ReadRpkFile(f, 1)[0x10:]
     f.close()
     if len(buf) < 0x10:
-        err('MDL model file is too small! {} bytes'.format(len(buf)))
+        err('I3D model file is too small! {} bytes'.format(len(buf)))
 
     # Construct the entire node tree recursively.
     rootNode = Node(buf, 0)
