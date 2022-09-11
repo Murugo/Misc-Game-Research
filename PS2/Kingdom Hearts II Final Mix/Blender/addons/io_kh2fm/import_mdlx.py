@@ -361,7 +361,12 @@ class MdlxParser:
       bone.matrix = global_matrix
       if parent_index >= 0:
         bone.parent = armature_data.edit_bones[parent_index]
-      bone.inherit_scale = 'ALIGNED'
+
+      # Inherit scale mode ALIGNED fixes scale for several Disney characters, including Mushu.
+      # bone.inherit_scale = 'ALIGNED'
+      # Inherit scale mode FULL fixes the lower eyelids of Kairi and Namine.
+      bone.inherit_scale = 'FULL'
+      
       # Store a custom property that preserves the original Euler angles.
       # The MSET importer will apply keyframes on top of these angles.
       bone['local_euler'] = local_euler
