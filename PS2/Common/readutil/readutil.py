@@ -1,21 +1,26 @@
+'''Utilities for parsing binary files.'''
+
 import os
 import struct
 
 
 class BinaryFileReader:
-  def __init__(self, filepath):
+  '''Binary file reader with methods for parsing primitives from bytes.'''
+  def __init__(self, filepath: str):
     self.f = open(filepath, 'rb')
     self.filesize = os.path.getsize(filepath)
     self.base_offset = 0
 
   def seek(self, offs):
     self.f.seek(offs + self.base_offset)
+    return self
 
   def tell(self):
     return self.f.tell()
 
   def set_base_offset(self, offs):
     self.base_offset = offs
+    return self
 
   def read(self, size):
     return self.f.read(size)
@@ -84,13 +89,13 @@ class BinaryFileReader:
 
   def skip(self, length):
     self.f.read(length)
+    return self
 
 
 class BinaryFileReadWriter(BinaryFileReader):
+  '''Binary file writer with methods to write primitives.'''
   def __init__(self, filepath):
-    self.f = open(filepath, 'rb+')
-    self.filesize = os.path.getsize(filepath)
-    self.base_offset = 0
+    super().__init__(filepath)
 
   def write_float32(self, val):
     self.f.write(struct.pack('<f', val))
