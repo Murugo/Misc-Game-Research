@@ -200,6 +200,14 @@ class XhrParser:
     self.basename = basename
     self.bones = []
     # self.armature = None
+  
+  def init_root_only(self):
+    '''Initializes the bone list with a root bone.'''
+    pos = (0, 0, 0)
+    rot = (0, 0, 0)
+    rot2  = (0, 0, 0)
+    scale = (1, 1, 1)
+    self.bones.append(XhrBone(0, 'R', pos, rot, rot2, scale))
 
   def parse(self, file: readutil.BinaryFileReader, offset: int) -> None:
     '''Parses bones from the XHR file at the given offset in an opened file.'''
@@ -425,7 +433,11 @@ class PxyParser:
       bone_palette = file.skip(0x10).read_nuint8(0x40)
       if pxy_bone_count < 0x41:  # This is a hard-coded condition in MIPS.
         # Every mesh uses the full set of bones in their palette.
-        bone_palette = [i for i, _ in enumerate(self.xhr.bones)][2:]
+        if len(self.xhr.bones) == 1:
+          bone_palette = [0]
+        else:
+          bone_palette = [i for i, _ in enumerate(self.xhr.bones)][2:]
+          
       else:
         # Each mesh uses a subset of bones indexed by the palette below.
         bone_palette = [
@@ -493,7 +505,10 @@ class PxyParser:
             vertex_colors = [(c[0] / 0x80, c[1] / 0x80, c[2] /
                               0x80, c[3] / 0x80) for c in vertex_colors_int]
           else:
-            vertex_colors = [(1.0, 1.0, 1.0, 1.0) for _ in range(vertex_count)]
+            vertex_colors_int = vif_parser.read_uint32_xyzw(vertex_color_addr)
+            vertex_colors = [(vertex_colors_int[0] / 0x80, vertex_colors_int[1] / 0x80, vertex_colors_int[2] /
+                              0x80, vertex_colors_int[3] / 0x80) for _ in range(vertex_count)]
+            # vertex_colors = [(1.0, 1.0, 1.0, 1.0) for _ in range(vertex_count)]
           if (draw_flags & 0xC) > 0:
             bone_weights = [vif_parser.read_float32_xyzw(
               bone_weights_addr + i) for i in range(vertex_count)]
@@ -532,16 +547,18 @@ class PxyParser:
               reverse = False
 
           vtx_group_dict = {}
-          for v_index, (bone_offs_list, weights) in enumerate(zip(bone_offs_table, bone_weights)):
-            for b_offs, weight in zip(bone_offs_list, weights):
-              if b_offs >= 0xFF:
-                continue
-              # b_offs is an offset to the bone matrix in VU memory.
-              palette_index = int(b_offs // 4)
-              bone_index = bone_palette[palette_index].index
-              if bone_index not in vtx_group_dict:
-                vtx_group_dict[bone_index] = []
-              vtx_group_dict[bone_index].append((v_index, weight))
+
+          if (draw_flags & 0xE) > 0:
+            for v_index, (bone_offs_list, weights) in enumerate(zip(bone_offs_table, bone_weights)):
+              for b_offs, weight in zip(bone_offs_list, weights):
+                if b_offs >= 0xFF:
+                  continue
+                # b_offs is an offset to the bone matrix in VU memory.
+                palette_index = int(b_offs // 4)
+                bone_index = bone_palette[palette_index].index
+                if bone_index not in vtx_group_dict:
+                  vtx_group_dict[bone_index] = []
+                vtx_group_dict[bone_index].append((v_index, weight))
 
           # Build Blender object
           last_offs_str = '{:08x}'.format(
@@ -617,6 +634,8 @@ class ChrParser:
     if self.armature:
       self.armature.rotation_euler = (math.pi / 2, 0, 0)
     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+    # Save all generated textures.
+    bpy.ops.image.save_all_modified()
 
   @staticmethod
   def read_file_entry_map(
@@ -678,8 +697,75 @@ class ChrParser:
       modifier = obj.modifiers.new(type='ARMATURE', name='Armature')
       modifier.object = self.armature
 
+    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+
+
+class SinglePxyParser:
+  '''Parser class for PXY.'''
+
+  def __init__(self):
+    self.basename = ''
+    self.armature = None
+    self.pxy = None
+    self.xhr = None
+    self.txy = None
+
+  def parse(self, pxy_filepath: str) -> None:
+    '''Parse the PXY at the given filepath. Attempt to parse the corresponding TXY.'''
+    self.basename = os.path.splitext(os.path.basename(pxy_filepath))[0]
+    txy_filepath = os.path.splitext(pxy_filepath)[0] + '.txy'
+    pxy_file = readutil.BinaryFileReader(pxy_filepath)
+    txy_file = readutil.BinaryFileReader(txy_filepath)
+
+    self.xhr = XhrParser(self.basename)
+    self.xhr.init_root_only()
+
+    self.txy = TxyParser(self.basename)
+    self.txy.parse(txy_file, offset=0)
+
+    self.pxy = PxyParser(self.basename, self.xhr, self.txy)
+    self.pxy.parse(pxy_file, offset=0)
+
+    # Build the armature.
+    self.build_armature()
+
+    # Finalize the scene.
+    if self.armature:
+      self.armature.rotation_euler = (math.pi / 2, 0, 0)
+    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
     # Save all generated textures.
     bpy.ops.image.save_all_modified()
+  
+  def build_armature(self) -> None:
+    '''Creates the model's armature in Blender.'''
+    # TODO: Share code with ChrParser.
+    if not self.pxy or not self.xhr:
+      return
+
+    armature_data = bpy.data.armatures.new(f'{self.basename}_Armature')
+    self.armature = bpy.data.objects.new(
+        f'{self.basename}_Armature', armature_data)
+
+    bpy.context.scene.collection.objects.link(self.armature)
+    bpy.context.view_layer.objects.active = self.armature
+    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+
+    b_bones = []  # List of bones in the Blender armature.
+    for bone in self.xhr.bones:
+      b_bone = armature_data.edit_bones.new(bone.name)
+      b_bone.tail = (0.02, 0, 0)
+      b_bone.use_inherit_rotation = True
+      b_bone.use_local_location = True
+      b_bone.matrix = bone.global_matrix
+      if bone.parent:
+        b_bone.parent = b_bones[bone.parent.index]
+      b_bones.append(b_bone)
+
+    # Attach all PXY objects to the armature.
+    for obj in self.pxy.objects:
+      obj.parent = self.armature
+      modifier = obj.modifiers.new(type='ARMATURE', name='Armature')
+      modifier.object = self.armature
 
     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
@@ -691,5 +777,14 @@ def load(_, filepath: str) -> 'tuple(str, str)':
     parser.parse(filepath)
   except (ChrImportError) as err:
     return 'CANCELLED', str(err)
+  return 'FINISHED', ''
 
+
+def load_pxy(_, filepath: str) -> 'tuple(str, str)':
+  '''Loads a PXY model into the current scene.'''
+  try:
+    parser = SinglePxyParser()
+    parser.parse(filepath)
+  except (ChrImportError) as err:
+    return 'CANCELLED', str(err)
   return 'FINISHED', ''

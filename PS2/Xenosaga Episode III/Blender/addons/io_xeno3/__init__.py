@@ -31,7 +31,7 @@ bl_info = {  # pylint:disable=invalid-name
 class ImportChr(bpy.types.Operator, ImportHelper):
   '''Load a Xenosaga Episode III CHR file'''
   bl_idname = 'import_xeno3.chr'
-  bl_label = 'Import Xenosaga Episode III (PS2) Model (CHR)'
+  bl_label = 'Import Xenosaga Episode III (PS2) Model Archive (CHR)'
   bl_options = {'PRESET', 'UNDO'}
 
   filename_ext = '.chr'
@@ -50,13 +50,37 @@ class ImportChr(bpy.types.Operator, ImportHelper):
     pass
 
 
+class ImportPxy(bpy.types.Operator, ImportHelper):
+  '''Load a Xenosaga Episode III PXY file'''
+  bl_idname = 'import_xeno3.pxy'
+  bl_label = 'Import Xenosaga Episode III (PS2) Model (PXY)'
+  bl_options = {'PRESET', 'UNDO'}
+
+  filename_ext = '.pxy'
+  filter_glob: StringProperty(default='*.pxy', options={'HIDDEN'})
+
+  def execute(self, context):
+    from . import import_chr
+
+    keywords = self.as_keywords(ignore=('filter_glob',))
+    status, msg = import_chr.load_pxy(context, **keywords)
+    if msg:
+      self.report({'ERROR'}, msg)
+    return {status}
+
+  def draw(self, context):
+    pass
+
+
 def menu_func_import(self, _):
   '''Adds import operators. '''
   self.layout.operator(ImportChr.bl_idname,
-                       text='Xenosaga Episode III Model (.chr)')
+                       text='Xenosaga Episode III Model Archive (.chr)')
+  self.layout.operator(ImportPxy.bl_idname,
+                       text='Xenosaga Episode III Model (.pxy)')
 
 
-CLASSES = (ImportChr,)
+CLASSES = (ImportChr, ImportPxy)
 
 
 def register():
