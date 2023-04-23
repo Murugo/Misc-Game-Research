@@ -148,12 +148,6 @@ class MapParser:
       mesh_data.from_pydata(vtx, [], tri)
       mesh_data.update()
 
-      if offs == 0xF7A0:
-        print(f'{objname}')
-        for v in vn:
-          print(v)
-        print('')
-
       if uv:
         mesh_data.uv_layers.new(do_init=False)
         mesh_data.uv_layers[-1].data.foreach_set('uv', [

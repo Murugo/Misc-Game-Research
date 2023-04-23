@@ -37,6 +37,8 @@ if "bpy" in locals():
     importlib.reload(import_dds)
   if "import_map" in locals():
     importlib.reload(import_map)
+  if "import_map_sh2" in locals():
+    importlib.reload(import_map_sh2)
   if "export_pack" in locals():
     importlib.reload(export_pack)
 
@@ -405,6 +407,28 @@ class ImportMapSh3(bpy.types.Operator, ImportHelper):
     pass
 
 
+class ImportMapSh2(bpy.types.Operator, ImportHelper):
+  """Load a Silent Hill 2 MAP file"""
+  bl_idname = "import_sh2.map"
+  bl_label = "Import Silent Hill 2 (PS2) Map (MAP)"
+  bl_options = {"PRESET", "UNDO"}
+
+  filename_ext = ".map"
+  filter_glob: StringProperty(default="*.map", options={'HIDDEN'})
+
+  def execute(self, context):
+    from . import import_map_sh2
+
+    keywords = self.as_keywords(ignore=("filter_glob",))
+    status, msg = import_map_sh2.load(context, **keywords)
+    if msg:
+      self.report({'ERROR'}, msg)
+    return {status}
+
+  def draw(self, context):
+    pass
+
+
 def menu_func_import(self, context):
   self.layout.operator(ImportMdl.bl_idname,
                        text="Silent Hill 2/3 Model (.mdl)")
@@ -416,6 +440,8 @@ def menu_func_import(self, context):
                        text="Silent Hill 3 Cutscene Pack (.pack)")
   self.layout.operator(ImportDdsSh2.bl_idname,
                        text="Silent Hill 2 Cutscene Pack (.dds)")
+  self.layout.operator(ImportMapSh2.bl_idname,
+                       text="Silent Hill 2 Map (.map)")
   self.layout.operator(ImportMapSh3.bl_idname,
                        text="Silent Hill 3 Map (.map)")
 
@@ -427,7 +453,7 @@ def menu_func_export(self, context):
 classes = (ImportMdl, ImportAnmSh2, ImportAnmSh3,
            ImportPackSh3,  PackTargetSelectorItem, PackTargetSelector_UL_List, PackTargetSelector,
            ImportDdsSh2, DdsObjectSelectorItem, DdsObjectSelector_UL_List, DdsObjectSelector,
-           ImportMapSh3, ExportPackSh3, PackExportTargetSelector)
+           ImportMapSh2, ImportMapSh3, ExportPackSh3, PackExportTargetSelector)
 
 
 def register():
