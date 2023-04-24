@@ -71,6 +71,7 @@ class PackParser:
     frame_set_count = f.read_uint32()
     frame_set_headers = [f.read_nuint32(4) for _ in range(frame_set_count)]
     morph_frames = dict()
+    morphs_with_valid_frames = 0
     for start_frame, end_frame, data_size, data_offs in frame_set_headers:
       if data_size == 0:
         continue
@@ -91,10 +92,15 @@ class PackParser:
         if frame_count == 0:
           morph_frames[morph_index].append((start_frame, 0.0, True))
           continue
+        morphs_with_valid_frames += 1
         for _ in range(frame_count):
           time, value = f.read_nuint16(2)
           morph_frames[morph_index].append(
               (time + start_frame, value / 4096.0, False))
+
+    if morphs_with_valid_frames == 0:
+      # Skip empty morph control file
+      return
 
     objects_with_shape_keys = [
         c for c in self.armature.children if c.data.shape_keys is not None]
