@@ -10,12 +10,14 @@ class BinaryFileReader:
 
   def seek(self, offs):
     self.f.seek(offs + self.base_offset)
+    return self
 
   def tell(self):
     return self.f.tell()
 
   def set_base_offset(self, offs):
     self.base_offset = offs
+    return self
 
   def read(self, size):
     return self.f.read(size)
@@ -84,6 +86,7 @@ class BinaryFileReader:
 
   def skip(self, length):
     self.f.read(length)
+    return self
 
 
 class BinaryFileReadWriter(BinaryFileReader):
