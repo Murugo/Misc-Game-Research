@@ -89,11 +89,12 @@ class PackParser:
         f.seek(morph_offs + data_offs)
         frame_count = f.read_uint16()
         if frame_count == 0:
+          morph_frames[morph_index].append((start_frame, 0.0, True))
           continue
         for _ in range(frame_count):
           time, value = f.read_nuint16(2)
           morph_frames[morph_index].append(
-              (time + start_frame, value / 4096.0))
+              (time + start_frame, value / 4096.0, False))
 
     objects_with_shape_keys = [
         c for c in self.armature.children if c.data.shape_keys is not None]
@@ -112,8 +113,8 @@ class PackParser:
       fcurve = shape_key_action.fcurves.new(
           f'key_blocks["ShapeKey_{morph_index}"].value')
       fcurve.keyframe_points.add(len(frames))
-      for i, (time, value) in enumerate(frames):
-        fcurve.keyframe_points[i].interpolation = 'LINEAR'
+      for i, (time, value, is_constant) in enumerate(frames):
+        fcurve.keyframe_points[i].interpolation = 'CONSTANT' if is_constant else 'LINEAR'
         fcurve.keyframe_points[i].co = time + 1, value
 
   def get_targets_from_track_file(self, f, offs):
