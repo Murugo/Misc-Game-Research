@@ -533,7 +533,8 @@ class MdlParser:
             texture_index, self.basename)
         image = bpy.data.images.new(f'{texture_name}.png',
                                     width=width,
-                                    height=height)
+                                    height=height,
+                                    alpha=True)
         image.pixels = pixels
         image.update()
         # TODO: This still doesn't prevent Blender from GCing the texture?
