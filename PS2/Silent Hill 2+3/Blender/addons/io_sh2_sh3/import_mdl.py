@@ -435,10 +435,11 @@ class MdlParser:
         t1 = get_vtx_index(tri_cmd)
         t2 = get_vtx_index(tri_cmds[i - 1])
         t3 = get_vtx_index(tri_cmds[i - 2])
-        if reverse:
-          tri.append((t3, t2, t1))
-        else:
-          tri.append((t1, t2, t3))
+        if t1 != t2 and t2 != t3 and t1 != t3:
+          if reverse:
+            tri.append((t3, t2, t1))
+          else:
+            tri.append((t1, t2, t3))
       reverse = not reverse
 
     return vtx, vn, uv, tri, vtx_group_dict, primary_bone_list

@@ -1,3 +1,4 @@
+.pylintrc
 .vscode/
 **/__pycache__/
 **/*.pyd
