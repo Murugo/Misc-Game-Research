@@ -19,6 +19,19 @@ class MapImportError(Exception):
   pass
 
 
+class ObjectIdentifier:
+  def __init__(self, group=''):
+    self.group = group
+    self.mesh_index = -1
+    self.unkmesh_index = -1
+    self.submesh_index = -1
+    self.meshpart_index = -1
+    self.offs = 0
+
+  def __repr__(self):
+    return f'{self.group}_M{self.mesh_index:02d}_U{self.unkmesh_index:02d}_S{self.submesh_index:02d}_P{self.meshpart_index:02d}_{self.offs:#010x}'
+
+
 class MapParser:
   def __init__(self):
     self.basename = ''
@@ -36,26 +49,53 @@ class MapParser:
 
     for i, offs in enumerate(mesh_group_offsets):
       if offs > 0:
-        max_mesh_offs = mesh_group_offsets[i + 1] if i < len(mesh_group_offsets) - 1 else f.filesize
-        self.parse_mesh_group(f, offs, max_mesh_offs)
+        max_offs = mesh_group_offsets[i + 1] if i < len(mesh_group_offsets) - 1 else f.filesize
+        oid = ObjectIdentifier('T' if i == 0 else 'O')
+        self.parse_mesh_group(f, offs, oid, max_offs)
 
-  def parse_mesh_group(self, f, offs, max_mesh_offs):
-    f.seek(offs + 0x10)
-    self.parse_meshes(f, offs + 0x10, max_mesh_offs)
+  def parse_mesh_group(self, f, offs, oid, max_offs):
+    self.parse_meshes(f, offs + 0x10, oid, max_offs)
   
-  def parse_meshes(self, f, offs, max_mesh_offs):
-    index = 0
-    while offs > 0 and offs < max_mesh_offs:
-      print('Visiting: ', hex(offs))
+  def parse_meshes(self, f, offs, oid, max_offs):
+    oid.mesh_index = 0
+    while offs > 0 and offs < max_offs:
+      f.seek(offs + 0x4)
+      next_offs = f.read_uint32()
+      self.parse_unkmeshes(f, offs + 0x30, oid, next_offs if next_offs > 0 else max_offs)
+      oid.mesh_index += 1
+      offs = next_offs
+
+  def parse_unkmeshes(self, f, offs, oid, max_offs):
+    oid.unkmesh_index = 0
+    while offs > 0 and offs < max_offs:
+      f.seek(offs + 0x4)
+      next_offs = f.read_uint32()
+      self.parse_submeshes(f, offs + 0x10, oid)
+      oid.unkmesh_index += 1
+      offs = next_offs
+  
+  def parse_submeshes(self, f, offs, oid):
+    oid.submesh_index = 0
+    while offs > 0:
+      f.seek(offs + 0x1C)
+      next_offs = f.read_uint32()
+      self.parse_meshparts(f, offs + 0x20, oid)
+      oid.submesh_index += 1
+      offs = next_offs
+
+  def parse_meshparts(self, f, offs, oid):
+    oid.meshpart_index = 0
+    while offs > 0:
+      oid.offs = offs
       f.seek(offs)
-      total_size, next_offs = f.read_nuint32(2)
+      vertex_count = f.read_uint16()
+      f.skip(0x6)
+      next_offs = f.read_uint32()
       
-      f.seek(offs + 0x60)
-      vertex_count = f.read_uint32()
-      
-      f.seek(offs + 0xD0)
+      f.seek(offs + 0x70)
 
       vtx = []
+      vtx_vec = []
       tri = []
       vn = []
       uv = []
@@ -64,7 +104,8 @@ class MapParser:
       for i in range(vertex_count):
         # vtx.append([v / 0x8000 * 100.0 for v in f.read_nint16(3)])
         vtx_local = mathutils.Vector(f.read_nint16(3)).to_4d()
-        vtx.append((self.global_matrix @ vtx_local).to_3d().to_tuple()[:3])
+        vtx_vec.append((self.global_matrix @ vtx_local).to_3d())
+        vtx.append(vtx_vec[-1].to_tuple()[:3])
         # vtx.append(f.read_nint16(3))
         vn_vcol_x = f.read_int16()
         uv_flag = f.read_nint16(2)
@@ -74,16 +115,15 @@ class MapParser:
         vcol.append([(v & 0x3F) / 0x20 for v in vn_vcol])
         flag = uv_flag[0] & 0x1
         if not flag:
-          if reverse:
-            tri.append((i, i - 1, i - 2))
-          else:
-            tri.append((i - 2, i - 1, i))
+          if (vtx_vec[-1] - vtx_vec[-2]).length > 1e-6 and (vtx_vec[-2] - vtx_vec[-3]).length > 1e-6:
+            if reverse:
+              tri.append((i, i - 1, i - 2))
+            else:
+              tri.append((i - 2, i - 1, i))
         reverse = not reverse
 
       # Build Blender object at the shape level.
-      offs_str = '{0:#010x}'.format(offs)
-      objname = f'{self.basename}_'
-      objname += f'{index}_{offs_str}'
+      objname = f'{self.basename}_{oid}'
       mesh_data = bpy.data.meshes.new(f'{objname}_mesh_data')
       mesh_data.from_pydata(vtx, [], tri)
       mesh_data.update()
@@ -111,7 +151,7 @@ class MapParser:
       bpy.context.scene.collection.objects.link(obj)
       obj.select_set(state=True)
       
-      index += 1
+      oid.meshpart_index += 1
       offs = next_offs
 
 
