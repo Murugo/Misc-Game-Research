@@ -19,6 +19,27 @@ class MapImportError(Exception):
   pass
 
 
+class MaterialManager:
+  def __init__(self):
+    self.mat_default = self.get_material('mat_default')
+    self.mat_dict = {
+      0: self.get_material('vukind_0_basic_fc_new2_s1p2'),
+      2: self.get_material('vukind_2_Vu1_Spot_Blinn', (1.0, 0.0, 1.0, 1.0)),
+      4: self.get_material('vukind_4_Vu1_S1P2phong', (1.0, 0.0, 0.0, 1.0)),
+      8: self.get_material('vukind_8_Vu1_Constant', (0.0, 1.0, 0.0, 1.0)),
+      9: self.get_material('Vu1_Spot_VCasLambert', (0.3, 0.3, 1.0, 1.0))
+    }
+
+  def get_material(self, name, color = (1.0, 1.0, 1.0, 1.0)):
+    if name in bpy.data.materials:
+      return bpy.data.materials[name]
+    mat = bpy.data.materials.new(name=name)
+    mat.use_nodes = True
+    bsdf = mat.node_tree.nodes['Principled BSDF']
+    bsdf.inputs['Specular'].default_value = 0
+    bsdf.inputs['Base Color'].default_value = color
+    return mat
+
 class ObjectIdentifier:
   def __init__(self, group=''):
     self.group = group
@@ -26,6 +47,7 @@ class ObjectIdentifier:
     self.unkmesh_index = -1
     self.submesh_index = -1
     self.meshpart_index = -1
+    self.vukind = 0
     self.offs = 0
 
   def __repr__(self):
@@ -35,6 +57,7 @@ class ObjectIdentifier:
 class MapParser:
   def __init__(self):
     self.basename = ''
+    self.mat_manager = MaterialManager()
 
   def parse(self, filepath):
     self.basename = os.path.splitext(os.path.basename(filepath))[0]
@@ -77,7 +100,9 @@ class MapParser:
   def parse_submeshes(self, f, offs, oid):
     oid.submesh_index = 0
     while offs > 0:
-      f.seek(offs + 0x1C)
+      f.seek(offs + 0x14)
+      oid.vukind = f.read_uint8()
+      f.skip(0x7)
       next_offs = f.read_uint32()
       self.parse_meshparts(f, offs + 0x20, oid)
       oid.submesh_index += 1
@@ -138,6 +163,12 @@ class MapParser:
       obj = bpy.data.objects.new(objname, mesh_data)
       obj.rotation_euler = (-math.pi / 2, 0, math.pi)
       obj.scale = (0.1, 0.1, 0.1)
+
+      if oid.vukind in self.mat_manager.mat_dict:
+        obj.data.materials.append(self.mat_manager.mat_dict[oid.vukind])
+      else:
+        print(f'Found unknown vukind {oid.vukind}')
+        obj.data.materials.append(self.mat_manager.mat_default)
 
       # Normals should be set after creating the mesh object to prevent Blender from recalculating them.
       custom_vn = []
