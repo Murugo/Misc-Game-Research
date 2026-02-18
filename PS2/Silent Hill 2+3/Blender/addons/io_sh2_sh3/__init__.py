@@ -13,7 +13,9 @@ bl_info = {
 }
 
 from bpy.props import (
+    BoolProperty,
     CollectionProperty,
+    FloatProperty,
     IntProperty,
     StringProperty,
 )
@@ -43,6 +45,10 @@ if "bpy" in locals():
     importlib.reload(import_kg)
   if "export_pack" in locals():
     importlib.reload(export_pack)
+  if "export_kg" in locals():
+    importlib.reload(export_kg)
+  if "export_kg2" in locals():
+    importlib.reload(export_kg2)
 
 
 class ImportMdl(bpy.types.Operator, ImportHelper):
@@ -318,7 +324,8 @@ class DdsObjectSelector_UL_List(bpy.types.UIList):
 
   def draw_item(self, context, layout, data, item, icon, active_data, active_propname):
     if self.layout_type in {'DEFAULT', 'COMPACT'}:
-      layout.label(text=item.name, icon='ANIM_DATA')
+      icon_name = 'VIEW_CAMERA' if item.name == 'Camera' else 'ANIM_DATA'
+      layout.label(text=item.name, icon=icon_name)
 
 
 class DdsObjectSelector(bpy.types.Operator):
@@ -440,6 +447,12 @@ class ImportKg1(bpy.types.Operator, ImportHelper):
   filename_ext = ".kg1"
   filter_glob: StringProperty(default="*.kg1", options={'HIDDEN'})
 
+  split_by_geometry: BoolProperty(
+    name='Split Objects By Geometry Group',
+    description='Create individual objects for each shadow geometry group. Useful for debugging',
+    default=False
+  )
+
   def execute(self, context):
     from . import import_kg
 
@@ -450,7 +463,10 @@ class ImportKg1(bpy.types.Operator, ImportHelper):
     return {status}
 
   def draw(self, context):
-    pass
+    layout = self.layout
+    layout.label(text='Options:')
+    box = layout.box()
+    box.prop(self, 'split_by_geometry')
 
 
 class ImportKg2(bpy.types.Operator, ImportHelper):
@@ -462,11 +478,70 @@ class ImportKg2(bpy.types.Operator, ImportHelper):
   filename_ext = ".kg2"
   filter_glob: StringProperty(default="*.kg2", options={'HIDDEN'})
 
+  split_by_geometry: BoolProperty(
+      name='Split Objects By Geometry Group',
+      description='Create individual objects for each shadow geometry group. Useful for debugging',
+      default=False
+  )
+  world_scale: FloatProperty(
+    name='World Scale',
+    description='World scale for all shadow objects',
+    default=0.1
+  )
+
   def execute(self, context):
     from . import import_kg
 
     keywords = self.as_keywords(ignore=("filter_glob",))
     status, msg = import_kg.loadKg2(context, **keywords)
+    if msg:
+      self.report({'ERROR'}, msg)
+    return {status}
+
+  def draw(self, context):
+    layout = self.layout
+    layout.label(text='Options:')
+    box = layout.box()
+    box.prop(self, 'split_by_geometry')
+    box.prop(self, 'world_scale')
+
+
+class ExportKg1(bpy.types.Operator, ExportHelper):
+  """Export an armature's meshes to a Silent Hill 2/3 KG1 shadow model file"""
+  bl_idname = "export_sh2.kg1"
+  bl_label = "Export Silent Hill 2/3 (PS2) Shadow Model (KG1)"
+  bl_options = {"PRESET", "UNDO"}
+
+  filename_ext = ".kg1"
+  filter_glob: StringProperty(default="*.kg1", options={'HIDDEN'})
+
+  def execute(self, context):
+    from . import export_kg
+
+    keywords = self.as_keywords(ignore=("filter_glob","check_existing"))
+    status, msg = export_kg.export(context, **keywords)
+    if msg:
+      self.report({'ERROR'}, msg)
+    return {status}
+
+  def draw(self, context):
+    pass
+
+
+class ExportKg2(bpy.types.Operator, ExportHelper):
+  """Export objects to a Silent Hill 2/3 KG2 map shadow model file"""
+  bl_idname = "export_sh2.kg2"
+  bl_label = "Export Silent Hill 2/3 (PS2) Map Shadow Model (KG2)"
+  bl_options = {"PRESET", "UNDO"}
+
+  filename_ext = ".kg2"
+  filter_glob: StringProperty(default="*.kg2", options={'HIDDEN'})
+
+  def execute(self, context):
+    from . import export_kg2
+
+    keywords = self.as_keywords(ignore=("filter_glob","check_existing"))
+    status, msg = export_kg2.export(context, **keywords)
     if msg:
       self.report({'ERROR'}, msg)
     return {status}
@@ -498,12 +573,15 @@ def menu_func_import(self, context):
 
 def menu_func_export(self, context):
   self.layout.operator(ExportPackSh3.bl_idname, text="Silent Hill 3 Cutscene Pack (.pack)")
+  self.layout.operator(ExportKg1.bl_idname, text="Silent Hill 2/3 Shadow Model (.kg1)")
+  self.layout.operator(ExportKg2.bl_idname, text="Silent Hill 2/3 Map Shadow Model (.kg2)")
 
 
 classes = (ImportMdl, ImportAnmSh2, ImportAnmSh3,
            ImportPackSh3,  PackTargetSelectorItem, PackTargetSelector_UL_List, PackTargetSelector,
            ImportDdsSh2, DdsObjectSelectorItem, DdsObjectSelector_UL_List, DdsObjectSelector,
-           ImportMapSh2, ImportMapSh3, ExportPackSh3, PackExportTargetSelector, ImportKg1, ImportKg2)
+           ImportMapSh2, ImportMapSh3, ExportPackSh3, PackExportTargetSelector, ImportKg1, ImportKg2,
+           ExportKg1, ExportKg2)
 
 
 def register():

@@ -88,7 +88,7 @@ class BinaryFileReader:
 
 class BinaryFileReadWriter(BinaryFileReader):
   def __init__(self, filepath):
-    self.f = open(filepath, 'rb+')
+    self.f = open(filepath, 'wb+')
     self.filesize = os.path.getsize(filepath)
     self.base_offset = 0
 
@@ -97,3 +97,27 @@ class BinaryFileReadWriter(BinaryFileReader):
 
   def write_nfloat32(self, vals):
     self.f.write(struct.pack('<' + 'f' * len(vals), *vals))
+
+  def write_int16(self, val):
+    self.f.write(struct.pack('<h', val))
+
+  def write_nint16(self, vals):
+    self.f.write(struct.pack('<' + 'h' * len(vals), *vals))
+
+  def write_uint16(self, val):
+    self.f.write(struct.pack('<H', val))
+
+  def write_nuint16(self, vals):
+    self.f.write(struct.pack('<' + 'H' * len(vals), *vals))
+
+  def write_int32(self, val):
+    self.f.write(struct.pack('<i', val))
+
+  def write_nint32(self, vals):
+    self.f.write(struct.pack('<' + 'i' * len(vals), *vals))
+
+  def write_uint32(self, val):
+    self.f.write(struct.pack('<I', val))
+
+  def write_nuint32(self, vals):
+    self.f.write(struct.pack('<' + 'I' * len(vals), *vals))
