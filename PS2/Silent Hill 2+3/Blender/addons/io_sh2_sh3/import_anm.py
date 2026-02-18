@@ -82,11 +82,12 @@ class AnmParserSh2:
         f'{self.basename}_ANM')
 
     all_bone_fcurves = [[] for _ in range(len(self.armature.data.bones))]
+    bone_last_euler = {}
 
     frame_index = 0
     bone_base_index = 0
     while f.tell() < f.filesize - 4:
-      if bone_base_index > 0 and ((frame_size > 0 and (f.tell() % frame_size) == 0) or bone_base_index > len(self.armature.data.bones)):
+      if bone_base_index > 0 and ((frame_size > 0 and (f.tell() % frame_size) == 0) or bone_base_index >= len(self.armature.data.bones)):
         frame_index += 1
         bone_base_index = 0
 
@@ -94,7 +95,7 @@ class AnmParserSh2:
 
       flags = f.read_uint32()
 
-      if bone_base_index == 0 and (flags & 0xF) == 0 and flags > 0:
+      if bone_base_index == 0 and (flags & 0xFFFF) == 0 and flags > 0:
         print(f'Frame SKIP: {hex(f.tell())}')
         # Hack to re-align the start of the frame to the nearest word.
         # SH2 animation data is not always contiguous...
@@ -108,7 +109,7 @@ class AnmParserSh2:
         if flag == 0:
           continue
 
-        if flag not in (0x1, 0x2):
+        if flag not in (0x1, 0x2, 0x6):
           raise AnmImportError(
               f'Unhandled flag value {hex(flag)} for data at offset {hex(f.tell())}')
 
@@ -117,12 +118,22 @@ class AnmParserSh2:
         bone = self.armature.data.bones[bone_name]
 
         pos = None
-        if flag & 0x2 > 0:
+        if flag == 0x6:
           if bone.parent is None:
             pos = f.read_nfloat32(3)
+            f.skip(0xC)  # Skip dest pos
           else:
             pos = f.read_nfloat16(3)
-        euler_xyz = [v / 0x1000 for v in f.read_nint16(3)]
+            f.skip(0x6)  # Skip dest pos
+          euler_xyz = [v / 0x1000 for v in f.read_nint16(3)]
+          f.skip(0xA)  # Skip dest rot and two unknown shorts (interpolation factors?)
+        else:
+          if flag & 0x2 > 0:
+            if bone.parent is None:
+              pos = f.read_nfloat32(3)
+            else:
+              pos = f.read_nfloat16(3)
+          euler_xyz = [v / 0x1000 for v in f.read_nint16(3)]
 
         bone_matrix = bone.matrix_local
         if bone.parent:
@@ -138,7 +149,11 @@ class AnmParserSh2:
         mat = bone_matrix.inverted() @ translation_matrix @ rotation_matrix
 
         kf_pos = (mat[0][3], mat[1][3], mat[2][3])
-        kf_euler = mat.to_euler()
+        if bone_name in bone_last_euler:
+          kf_euler = mat.to_euler('XYZ', bone_last_euler[bone_name])
+        else:
+          kf_euler = mat.to_euler()
+        bone_last_euler[bone_name] = kf_euler
 
         if frame_index == 0:
           fcurves = [
